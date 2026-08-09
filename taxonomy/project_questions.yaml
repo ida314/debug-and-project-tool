@@ -1,0 +1,75 @@
+# Question archetypes for the project deck. One card is created per
+# (project x archetype). The proposer reads the actual repo and turns the archetype
+# into something concrete -- generic questions are worthless here.
+
+# Fixed across all questions so a dimension can be trended over weeks.
+rubric_dimensions:
+  - correctness
+  - specificity
+  - tradeoff-awareness
+  - structure
+  - conciseness
+
+archetypes:
+- id: design-tradeoff
+  name: Core design tradeoff
+  prompt_seed: >
+    Pick a concrete structural decision visible in the code and ask why it was made,
+    naming the specific alternative that was passed over.
+  rubric_focus: [tradeoff-awareness, specificity]
+
+- id: why-not-alternative
+  name: Why not X instead
+  prompt_seed: >
+    Name a plausible alternative technology or approach and ask the candidate to
+    defend not using it. Push on the cost they accepted.
+  rubric_focus: [tradeoff-awareness, correctness]
+
+- id: failure-modes
+  name: Failure modes
+  prompt_seed: >
+    Ask what happens when a specific dependency, network call, or invariant fails.
+  rubric_focus: [correctness, specificity]
+
+- id: scaling
+  name: Scaling behavior
+  prompt_seed: >
+    Ask what breaks first at 10x or 100x the current load, and why that component.
+  rubric_focus: [correctness, tradeoff-awareness]
+
+- id: testing-strategy
+  name: Testing strategy
+  prompt_seed: >
+    Ask what is and isn't tested, and how they decided where the line falls.
+  rubric_focus: [structure, specificity]
+
+- id: hardest-bug
+  name: Hardest bug in this project
+  prompt_seed: >
+    Ask for the hardest bug they hit here and how they found it. Probe the method,
+    not the outcome.
+  rubric_focus: [structure, specificity]
+
+- id: data-model
+  name: Data model / schema decisions
+  prompt_seed: >
+    Ask why the data is shaped this way and what a change to it would cost.
+  rubric_focus: [correctness, tradeoff-awareness]
+
+- id: security-boundary
+  name: Trust and security boundaries
+  prompt_seed: >
+    Ask where untrusted input enters and what happens to it.
+  rubric_focus: [correctness, specificity]
+
+- id: what-would-you-redo
+  name: What would you do differently
+  prompt_seed: >
+    Ask what they'd change with hindsight, and push for the reason it wasn't obvious then.
+  rubric_focus: [tradeoff-awareness, structure]
+
+- id: walkthrough
+  name: End-to-end walkthrough
+  prompt_seed: >
+    Ask them to trace one concrete request or operation through the whole system.
+  rubric_focus: [structure, conciseness]

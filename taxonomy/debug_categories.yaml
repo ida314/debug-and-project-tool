@@ -1,0 +1,80 @@
+# Seed bug classes for the debug deck.
+#
+# `rewards` is the load-bearing field: it names the debugging technique the bug is
+# designed to make you reach for. That's how "practice using breakpoints" becomes
+# trainable -- you generate bugs that are miserable to find by reading.
+#
+# techniques: read (careful reading) | breakpoint | print-tracing | stack-trace
+#             | bisect | logging | profiler | repro-minimization
+
+- id: off-by-one-boundary
+  name: Off-by-one at a boundary
+  hint: Loop bounds, slice indices, or an inclusive/exclusive mismatch.
+  rewards: [breakpoint, read]
+  level: 1
+
+- id: silent-exception-swallow
+  name: Silently swallowed error
+  hint: An except/catch that hides the real failure, so the symptom surfaces far away.
+  rewards: [stack-trace, logging]
+  level: 2
+
+- id: stale-cache-invalidation
+  name: Stale cache / missing invalidation
+  hint: Cached value outlives the thing it derived from.
+  rewards: [print-tracing, breakpoint]
+  level: 3
+
+- id: shared-mutable-state
+  name: Shared mutable state across calls
+  hint: Mutable default arg, module-level accumulator, or object reused across requests.
+  rewards: [breakpoint, repro-minimization]
+  level: 3
+
+- id: race-condition
+  name: Race / ordering dependency
+  hint: Correct alone, wrong under concurrency or interleaving.
+  rewards: [logging, repro-minimization]
+  level: 4
+
+- id: type-coercion
+  name: Implicit conversion or coercion
+  hint: String/number, null/undefined, int/float truncation at a boundary.
+  rewards: [breakpoint, read]
+  level: 1
+
+- id: wrong-early-return
+  name: Early return / short-circuit on the wrong branch
+  hint: A guard clause that fires in a case it shouldn't.
+  rewards: [breakpoint, read]
+  level: 2
+
+- id: resource-leak
+  name: Unreleased resource
+  hint: File handle, connection, or lock not released on the error path.
+  rewards: [profiler, logging]
+  level: 3
+
+- id: config-env-drift
+  name: Config or environment drift
+  hint: Default differs from what the code assumes; works locally, not elsewhere.
+  rewards: [bisect, read]
+  level: 2
+
+- id: api-contract-mismatch
+  name: Contract mismatch between two components
+  hint: Caller and callee disagree about units, ordering, nullability, or ownership.
+  rewards: [breakpoint, stack-trace]
+  level: 3
+
+- id: state-machine-transition
+  name: Invalid state transition
+  hint: A state is entered or exited in an order the rest of the code doesn't expect.
+  rewards: [logging, print-tracing]
+  level: 4
+
+- id: floating-point-accumulation
+  name: Accumulated numeric error
+  hint: Comparison or accumulation that's fine for one item and wrong for ten thousand.
+  rewards: [repro-minimization, breakpoint]
+  level: 3

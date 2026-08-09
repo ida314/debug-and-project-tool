@@ -1,0 +1,164 @@
+# Issue classes for the review deck, grouped by the four dimensions a maintainer
+# actually reviews along.
+#
+# Note what's here that could never be in debug_categories.yaml: a missing test or a
+# leaky abstraction has no runtime symptom, so it can't be found by debugging. It can
+# only be found by reading. That gap is the reason this deck exists separately.
+#
+# `catchable_by_tests: false` on most entries is the point -- if CI would catch it,
+# human review isn't what's being trained.
+
+dimensions:
+  - correctness
+  - maintainability
+  - performance
+  - testing
+
+issues:
+# --- correctness ---
+- id: unhandled-error-path
+  dimension: correctness
+  name: Unhandled error or None path
+  hint: The happy path is handled; the failure path silently continues or crashes later.
+  catchable_by_tests: false
+  severity: blocker
+  level: 1
+
+- id: breaking-api-change
+  dimension: correctness
+  name: Silently breaking change to a public contract
+  hint: A signature, return shape, or default changes in a way existing callers won't survive.
+  catchable_by_tests: false
+  severity: blocker
+  level: 2
+
+- id: race-in-new-code
+  dimension: correctness
+  name: Concurrency introduced without synchronization
+  hint: New shared state, or a lock that doesn't cover everything it needs to.
+  catchable_by_tests: false
+  severity: blocker
+  level: 4
+
+- id: partial-migration
+  dimension: correctness
+  name: Incomplete refactor
+  hint: The new pattern is applied in most call sites but not all.
+  catchable_by_tests: false
+  severity: major
+  level: 2
+
+- id: off-by-one-in-diff
+  dimension: correctness
+  name: Boundary error in new logic
+  hint: Pagination, slicing, or range arithmetic that's wrong only at the edges.
+  catchable_by_tests: true
+  severity: major
+  level: 2
+
+# --- maintainability ---
+- id: leaky-abstraction
+  dimension: maintainability
+  name: Abstraction that leaks its implementation
+  hint: The caller has to know internals for the code to be correct.
+  catchable_by_tests: false
+  severity: major
+  level: 3
+
+- id: duplicated-logic
+  dimension: maintainability
+  name: Logic duplicated instead of reused
+  hint: A rule now lives in two places and will drift.
+  catchable_by_tests: false
+  severity: minor
+  level: 1
+
+- id: hidden-side-effect
+  dimension: maintainability
+  name: Function does something its name doesn't say
+  hint: A getter that mutates, a helper that writes to disk or global state.
+  catchable_by_tests: false
+  severity: major
+  level: 2
+
+- id: config-hardcoded
+  dimension: maintainability
+  name: Hardcoded value that belongs in config
+  hint: A path, URL, limit, or credential inlined at a call site.
+  catchable_by_tests: false
+  severity: minor
+  level: 1
+
+- id: error-swallowed-for-convenience
+  dimension: maintainability
+  name: Broad catch that hides future failures
+  hint: A bare except/catch added to make the diff pass, not because it's correct.
+  catchable_by_tests: false
+  severity: major
+  level: 2
+
+# --- performance ---
+- id: n-plus-one
+  dimension: performance
+  name: Query or call inside a loop
+  hint: One round trip per item where one batched call would do.
+  catchable_by_tests: false
+  severity: major
+  level: 2
+
+- id: unbounded-growth
+  dimension: performance
+  name: Unbounded collection or cache
+  hint: Something accumulates per request or per item with no eviction or limit.
+  catchable_by_tests: false
+  severity: major
+  level: 3
+
+- id: redundant-work
+  dimension: performance
+  name: Recomputation of an invariant
+  hint: Expensive work repeated inside a loop that could be hoisted.
+  catchable_by_tests: false
+  severity: minor
+  level: 2
+
+- id: blocking-call-in-async
+  dimension: performance
+  name: Synchronous call on a hot or async path
+  hint: File, network, or sleep blocking a loop that other work depends on.
+  catchable_by_tests: false
+  severity: major
+  level: 3
+
+# --- testing ---
+- id: missing-edge-case-test
+  dimension: testing
+  name: New behavior tested only on the happy path
+  hint: The branch most likely to break has no coverage.
+  catchable_by_tests: false
+  severity: major
+  level: 1
+
+- id: test-asserts-nothing
+  dimension: testing
+  name: Test that can't fail
+  hint: No assertion, an assertion on a mock, or one that passes either way.
+  catchable_by_tests: false
+  severity: major
+  level: 2
+
+- id: test-tests-the-mock
+  dimension: testing
+  name: Test exercises the mock, not the code
+  hint: Everything meaningful is stubbed, so the test proves nothing about behavior.
+  catchable_by_tests: false
+  severity: major
+  level: 3
+
+- id: flaky-by-construction
+  dimension: testing
+  name: Test depends on time, ordering, or network
+  hint: It will pass locally and fail in CI eventually.
+  catchable_by_tests: false
+  severity: minor
+  level: 3
