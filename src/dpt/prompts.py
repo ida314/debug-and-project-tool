@@ -22,8 +22,17 @@ Target time to find and fix: about {minutes} minutes.
 HARD REQUIREMENTS -- a spec violating any of these is useless:
 1. You MUST provide `repro_cmd`: a single shell command, runnable from the repo root,
    that exits NON-ZERO with the bug present and ZERO once the bug is fixed. If the
-   project has no test harness, WRITE a small repro script (committed in the repo) and
-   point `repro_cmd` at it. Run it yourself to confirm both directions before finishing.
+   project has no test harness, WRITE a small repro script and point `repro_cmd` at it.
+   Run it yourself to confirm both directions before finishing.
+   This is checked mechanically after you finish: we revert your edits and re-run
+   `repro_cmd`, and it MUST pass on the unmodified code. A command that fails for any
+   reason other than your bug -- a missing dependency, an already-failing test, a typo
+   -- is rejected and the whole exercise is regenerated.
+1a. If you write a repro script, it MUST be a NEW file. Do not add your repro to an
+   existing tracked test file: the revert step above would take the repro with it and
+   your otherwise-good bug would be thrown away.
+1b. Keep `repro_cmd` NARROW and fast -- a single test file or test id, not the entire
+   suite. It runs at least three times during setup and once per verification.
 2. The bug must NOT break imports, the build, or startup. A stack trace on line one is
    not an interview.
 3. The bug must be a plausible thing a real engineer would write -- a wrong decision,
@@ -34,6 +43,10 @@ HARD REQUIREMENTS -- a spec violating any of these is useless:
 
 Existing project test command (may be empty): {test_cmd}
 Existing project run command (may be empty): {run_cmd}
+That full suite {test_cost} and is known to pass right now, so you do not need to
+establish a baseline. Budget your time: read the code, make the edit, and verify with
+the narrowest command that covers it. Running the whole suite more than once is usually
+a waste of the time you have.
 
 When done, output ONLY this JSON object and nothing else:
 
@@ -221,4 +234,31 @@ Output ONLY:
   "justifications": {{"correctness": "...", ...}},
   "improvement": "the single most valuable thing to do differently",
   "follow_up": "the question a real interviewer would push with next"}}
+"""
+
+ONBOARD = """\
+Work out how to bootstrap and test this repository FROM A BARE CHECKOUT.
+
+Assume a fresh `git worktree`: tracked files and nothing else. No virtualenv, no
+node_modules, no editable install, no build artifacts, no `.env`. Whatever the project
+needs in order to run its tests, the setup command has to create.
+
+Read the repo to find out -- CI workflows, lockfiles, task runners, contributor docs.
+Do NOT run anything: you are proposing commands, not executing them. They are shown to
+the user for approval and then verified in a throwaway worktree.
+
+Rules for every command you propose:
+- A single shell line, runnable from the repo root, non-interactive.
+- Headed by a build tool ({allowed}). Anything else is discarded unread.
+- The test command must exit ZERO when the project is healthy. Prefer the whole suite:
+  it becomes the green baseline a planted bug is measured against.
+- Language: {lang}.
+
+Give up to {limit} candidates, best first, ordered by how confident you are. If the
+project genuinely has no automated tests, return an empty list rather than inventing a
+command -- "no usable test command" is a useful answer and a wrong one is not.
+
+Output ONLY:
+{{"candidates": [{{"setup": "shell command or null", "test": "shell command",
+  "run": "shell command or null", "why": "the file you got this from, briefly"}}]}}
 """

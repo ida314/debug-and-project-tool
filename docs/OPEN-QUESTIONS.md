@@ -2,13 +2,54 @@
 
 Ordered by how likely they are to sink the project.
 
-### 1. Can the injector reliably produce a *good* bug? (highest risk)
+### 1. Can the injector reliably produce a *good* bug? — *early answer: yes, tentatively*
 
 Failure modes: the bug breaks the build immediately (trivially findable), or it's
 buried so deep it's undiscoverable, or it's not actually reproducible. Mitigations
 planned: the fails-then-passes `repro_cmd` gate (mechanical, cheap, catches
-"not reproducible"), plus a critic pass (catches too-easy/too-hard). Unknown until
-block 4 of the MVP how often a proposal survives both.
+"not reproducible"), plus a critic pass (catches too-easy/too-hard).
+
+**First real data (2026-08-12, n=5 rounds).** Every injection that was given enough time
+cleared the gate — 5 for 5 across four bug classes and two projects. The single round
+that failed did so for infrastructure reasons rather than bug quality: the call hit a
+300-second timeout on the larger project, three attempts running, and succeeded once the
+timeout was raised (see #8). **No generated bug has yet been rejected as
+unreproducible**, so the free-form approach is not missing anything like 1 in 3, and the
+parameterized-template fallback below stays unbuilt.
+
+Caveat on the sample: 5 rounds across 4 of the 12 bug classes is thin, and three of the
+four drawn are ones an LLM is likely to be good at. Treat this as "no evidence of the
+feared failure mode" rather than a measured hit rate.
+
+Quality of what came out, judged by hand:
+
+- `off-by-one-boundary` on job-tracker: a single `>` → `>=` in a snooze-window check,
+  where `until` is exclusive by construction. Symptom-only issue report, four-rung hint
+  ladder correctly graded subsystem → file → function → cause, and hint 3 pointed at a
+  breakpoint — which is the technique that bug class is tagged to reward.
+- `silent-exception-swallow` on p99: a bare `except Exception: return` around the SRS
+  write, so an attempt commits and looks recorded while its card is never created. What
+  makes it a *good* one is that it's invisible from the settings screen too, because
+  `config.overrides` filters the offending value back out — a genuine multi-component
+  interaction rather than one edited line.
+- `stale-cache-invalidation` on job-tracker: the parsed `Criteria` memoized on the
+  server object and handed to every request for the life of the process, so edits from
+  the tuning page do nothing until restart. Correctly level 3 — you have to observe
+  runtime state across two requests to see it, which is exactly what that rung means.
+
+That second bug is the encouraging result, because it's the class of thing #5 worries
+injected bugs can't be: emergent-feeling rather than obviously inserted.
+
+- `shared-mutable-state` on job-tracker: `LlmClient._judgments` declared as a class
+  attribute, so one dict is shared by every instance for the whole process, and the memo
+  is keyed on title — two postings with the same title inherit each other's judgment.
+  This one was carried all the way through: repro failed, the fix made it pass, and the
+  fix judge independently named the cause and scored it 4/5.
+
+**Still unknown:** whether the difficulty *calibration* is right — these were "solved" by
+restoring the original file, not by a real attempt, so nothing here says a human finds
+them in the estimated time — and whether quality holds across the other eight bug
+classes. Revisit after ~20 real sessions.
 
 **If it turns out to be unreliable**, the fallback is a library of *parameterized bug
 templates* per language ("swap `<=` for `<` in a boundary check in a function matching
@@ -16,12 +57,16 @@ these criteria") where the LLM chooses the site and the template guarantees the 
 Less varied, far more reliable. Worth prototyping early if the free-form approach
 misses more than ~1 in 3.
 
-### 2. Verification false-negatives
+### 2. Verification false-negatives — *mitigation built*
 
 You fix the bug in a way that's correct but doesn't make `repro_cmd` pass — e.g. you
 changed the interface the repro script calls. Mitigation: the LLM judge gets a vote,
 and there's a manual "I claim this is fixed" override that flags the session for review
 rather than blocking you. Never let the harness tell a correct engineer they're wrong.
+
+`[f]orce solved` in the session REPL does this; it records `"forced": true` in
+`grade.json` so the session is auditable rather than silently trusted. Not yet known
+how often it's needed — if it's more than rarely, the repro contract is too brittle.
 
 ### 3. Peeking
 
@@ -34,10 +79,16 @@ only if it turns out to be tempting in practice.
 
 ### 4. Projects that can't run
 
-Most personal projects have no tests and a non-obvious run command. `dpt scan` asking
-once per project and caching handles this, but it's real friction on first use, and
-projects that genuinely can't be run headlessly (GUI apps, the Vulkan renderer) may be
-debug-ineligible entirely. They're still fine for the project-QA flow.
+Most personal projects have no tests and a non-obvious run command. **Largely resolved
+by `onboard.py`**: the commands are derived from the repo and proved in a worktree, so
+first use costs a keystroke per project rather than three answers. Measured over
+`~/Projects`, 9 of 12 repos yield a plausible candidate from static evidence alone; the
+rest fall through to the LLM proposer.
+
+What's left is the genuinely unrunnable: projects that can't run headlessly (GUI apps,
+the Vulkan renderer) are debug-ineligible whoever fills the field in. They're still fine
+for the project-QA flow. Open sub-question: a repo whose suite is red *today* verifies
+as ineligible even though it would be a fine training target at an older commit.
 
 ### 5. Does injected-bug practice transfer?
 
@@ -69,12 +120,28 @@ of "looks wrong but is fine" is transparently fine, nobody ever flags it, precis
 always 1.0, and the metric is decorative. One decoy per PR is a guess. Worth checking
 the false-positive rate after a handful of real sessions and tuning the count.
 
-### 8. Latency and cost
+### 8. Latency and cost — *worse than estimated, and it scales with the project*
 
-Injection is an agentic call over a real repo: 30–90s and non-trivial tokens. Fine for
-one session, annoying for a mixed queue. Phase 2's background pre-generation is the
-answer; until then, brief the user during the wait. The review round is worse than the
-debug round here — writing a whole feature is a longer call than introducing one bug.
+Injection is an agentic call over a real repo. The 30–90s estimate held for a small,
+fast project and was badly wrong for a large one:
+
+| Project | Size | Suite | Injection |
+|---|---|---|---|
+| job-tracker | 8.7k LOC | 0.6s | succeeded first attempt |
+| p99 | 14k LOC | 70s | timed out at 300s, three times |
+
+The driver is the *test suite*, not the line count: the injector reads the repo and then
+runs the suite to check its own work, so a 70-second suite eats the budget several times
+over. Two changes followed — `LLM_TIMEOUT_S` is now 900s (overridable via
+`DPT_LLM_TIMEOUT`), and the injector is told up front how long the suite takes and that
+it is already green, so it doesn't spend a run establishing a baseline we've established
+for it.
+
+The deeper consequence is for scheduling: **a project's suite runtime, not its size,
+decides whether it is usable material.** The repro command runs at least three times
+during generation and once per verification. Worth capturing `test_seconds` (now
+recorded on the project) as a scheduling input, and worth pre-generating in the
+background — phase 2's answer — before the mixed queue is built.
 
 ### 9. Grading the verbal answers credibly
 

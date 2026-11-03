@@ -26,7 +26,7 @@ from pathlib import Path
 
 import yaml
 
-from . import config, llm, prompts, srs, store, worktree
+from . import config, debug_flow, llm, prompts, srs, store, worktree
 
 MAX_PR_ATTEMPTS = 3
 ISSUES_PER_PR = 3
@@ -97,8 +97,7 @@ def tests_pass(wt: worktree.Worktree, test_cmd: str | None, timeout: int = 300) 
     if not test_cmd:
         return True  # nothing to gate on; the critic pass carries more weight then
     try:
-        proc = subprocess.run(test_cmd, shell=True, cwd=str(wt.path),
-                              capture_output=True, text=True, timeout=timeout)
+        proc = wt.run(test_cmd, timeout=timeout)
     except subprocess.TimeoutExpired:
         return False
     return proc.returncode == 0
@@ -156,6 +155,18 @@ def start(project: dict, picks: list[dict]) -> ReviewSession:
     config.ensure_dirs()
     session_id = f"{date.today().isoformat()}-{uuid.uuid4().hex[:6]}"
     wt = worktree.create(Path(project["path"]), session_id)
+    try:
+        return _implement(project, picks, wt, session_id)
+    except BaseException:
+        worktree.teardown(wt)
+        raise
+
+
+def _implement(project: dict, picks: list[dict], wt: worktree.Worktree,
+               session_id: str) -> ReviewSession:
+    # Same bootstrap the debug flow needs: a bare worktree has no virtualenv, so the
+    # tests-must-pass gate would otherwise fail for reasons unrelated to the PR.
+    debug_flow.prepare_worktree(project, wt)
     base_ref = wt.git("rev-parse", "HEAD").stdout.strip()
 
     issue_list = "\n".join(
@@ -196,8 +207,8 @@ def start(project: dict, picks: list[dict]) -> ReviewSession:
         wt.git("reset", "--hard", base_ref, check=False)
         wt.git("clean", "-fd", check=False)
 
-    worktree.teardown(wt)
-    raise RuntimeError(
+    # Teardown is the wrapper's job, so every exit path gets it.
+    raise debug_flow.GateError(
         f"could not generate a reviewable PR after {MAX_PR_ATTEMPTS} attempts: {last_error}"
     )
 

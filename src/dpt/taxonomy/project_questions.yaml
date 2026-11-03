@@ -73,3 +73,35 @@ archetypes:
   prompt_seed: >
     Ask them to trace one concrete request or operation through the whole system.
   rubric_focus: [structure, conciseness]
+
+- id: why-this-layer-exists
+  name: Why this layer exists
+  prompt_seed: >
+    Pick a layer or secondary component (a router, a client library, a wrapper) and
+    ask what a caller would have to know or do if it didn't exist. Push past the
+    surface answer to the specific state it hides or the responsibility only it owns.
+  rubric_focus: [correctness, specificity]
+
+- id: compatibility-constraints
+  name: Choices forced by compatibility
+  prompt_seed: >
+    Find a place where the project stands in for, wraps, or talks to an existing
+    system or protocol. Ask which design choices exist only to stay compatible with
+    it, and what would break for an existing caller if it had been done differently.
+  rubric_focus: [tradeoff-awareness, specificity]
+
+- id: guarantee-vs-heuristic
+  name: Guarantees versus tuned heuristics
+  prompt_seed: >
+    Ask which behaviors are hard guarantees and which are tuned heuristics. Push for
+    the concrete bound the guarantee gives, and how it still holds when the
+    heuristic's weights are wrong.
+  rubric_focus: [correctness, tradeoff-awareness]
+
+- id: current-status
+  name: What actually works today
+  prompt_seed: >
+    Ask how far along the project is, then pick one capability it claims and ask
+    whether that has run for real or only in tests or on paper. Probe any claim the
+    code or docs don't back up.
+  rubric_focus: [correctness, specificity]

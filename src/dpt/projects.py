@@ -1,8 +1,16 @@
 """Build the project index.
 
-`run_cmd` / `test_cmd` can't be reliably inferred, so we ask once and cache. A project
-without a usable command is marked debug-ineligible rather than guessed at -- a bug we
-can't reproduce is a bug we can't grade.
+`run_cmd` / `test_cmd` can't be reliably *inferred*, but they can be derived and then
+proved: see `onboard.py`, which reads them out of the repo and runs them in a throwaway
+worktree before keeping them. What survives is cached here. A project with no command
+that goes green is marked debug-ineligible rather than guessed at -- a bug we can't
+reproduce is a bug we can't grade.
+
+`setup_cmd` exists because a `git worktree` checkout contains tracked files and nothing
+else: no `.venv`, no `node_modules`, no editable install. Without a bootstrap step the
+project's own test command fails in the worktree for environment reasons, which -- since
+the debug gate only asks whether the repro *fails* -- would look exactly like a
+successfully injected bug and hand over an unsolvable exercise.
 """
 
 from __future__ import annotations
@@ -71,8 +79,20 @@ def scan(root: Path) -> list[dict]:
                 "has_tests": any((child / t).exists() for t in TEST_MARKERS),
                 "run_cmd": None,
                 "test_cmd": None,
+                # Bootstrap for a bare checkout: `uv sync`, `npm ci`, `make build`...
+                "setup_cmd": None,
+                "configured": False,
+                # Where the commands came from -- a CI file, a lockfile, claude -- or
+                # None if they were typed. Provenance is worth keeping: a derived
+                # command can be re-derived when its source changes, a typed one can't.
+                "derived_from": None,
                 "debug_eligible": None,  # set once run/test cmd is known
                 "last_debugged": None,
+                # Measured by the baseline run; tells the injector how to spend its time.
+                "test_seconds": None,
+                # Cached result of the clean-worktree baseline check, keyed by commit,
+                # so a 70-second test suite isn't re-run every session.
+                "baseline_ok_at": None,
                 "summary": None,
             }
         )
@@ -86,9 +106,11 @@ def merge(existing: list[dict], scanned: list[dict]) -> list[dict]:
     for proj in scanned:
         prior = by_path.get(proj["path"])
         if prior:
-            for key in ("run_cmd", "test_cmd", "debug_eligible",
-                        "last_debugged", "summary"):
-                proj[key] = prior.get(key)
+            for key in ("run_cmd", "test_cmd", "setup_cmd", "configured", "derived_from",
+                        "debug_eligible", "last_debugged", "baseline_ok_at",
+                        "test_seconds", "summary"):
+                if key in prior:
+                    proj[key] = prior[key]
         out.append(proj)
     return out
 

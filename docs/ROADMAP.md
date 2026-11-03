@@ -1,42 +1,55 @@
 # Roadmap
 
-## The one-hour MVP
+## The MVP — done
 
-Target: **one complete debug round, start to finish, on a real project.** Everything
-else is stubbed. Six ten-minute blocks:
+Target was **one complete debug round, start to finish, on a real project.** That
+works: `dpt scan` then `dpt debug` injects a bug, briefs, times, verifies, grades and
+tears down.
 
-| # | Block | Deliverable |
-|---|---|---|
-| 1 | Skeleton + store | `dpt` runs, `store.py` reads/writes JSON, XDG paths exist |
-| 2 | `dpt scan` | Walks `~/Projects`, writes `projects.json`, prompts once per project for `run_cmd` / `test_cmd` |
-| 3 | Worktree lifecycle | Create `dpt/<id>` worktree from a clean repo, tear it down. Test it on a throwaway repo first. |
-| 4 | Injection call | `claude -p` inside the worktree returns a valid bug spec + modified tree; assert `repro_cmd` fails |
-| 5 | Session loop | Brief screen, clock, `[v]erify` runs `repro_cmd`, `[h]int`, `[q]uit` |
-| 6 | Grade + log + teardown | Write session dir, SM-2 the card, remove the worktree |
+| # | Block | Status |
+|---|-------|--------|
+| 1 | Skeleton + store | done |
+| 2 | `dpt scan` | done — derives `setup_cmd`/`test_cmd` and proves them (`onboard.py`) |
+| 3 | Worktree lifecycle | done, plus `dpt clean` for litter from crashed sessions |
+| 4 | Injection call | done — **both** halves of the gate enforced |
+| 5 | Session loop | done, with a `[f]orce solved` override |
+| 6 | Grade + log + teardown | done, teardown guaranteed on any exception |
 
-Non-goals for the hour: the TUI being pretty, the critic pass, audio, the QA flow,
-diff-snapshot timelines. Print-to-terminal is acceptable in blocks 4–6 if Textual is
-fighting you — the flow's correctness is what matters, and the screens can be bolted
-on after.
+Four things the first real runs turned up that the design hadn't accounted for:
 
-**Ship-blocker to watch:** block 4 is the risky one. If `claude -p` can't reliably
-produce a bug whose `repro_cmd` fails-then-passes, nothing downstream works. Budget
-the slip there and cut block 6's polish, not block 4's verification.
+- **A worktree has no environment.** `git worktree add` checks out tracked files and
+  nothing else — no virtualenv, no `node_modules`, no editable install — so a project's
+  own test command fails there for reasons unrelated to any bug. Hence `setup_cmd`, and
+  a baseline check that the suite is green *before* a bug is injected.
+- **Only half the gate was implemented.** The code checked that `repro_cmd` fails on
+  the bugged tree and never that it passes on a clean one, so any command that failed
+  for an unrelated reason was accepted as a successful injection. Both directions are
+  now enforced, and `tests/test_debug_flow.py` fails if either is removed.
+- **dpt's own virtualenv leaked into the projects it trains on.** `uv run dpt` exports
+  `VIRTUAL_ENV`; inherited by a subprocess, it made `uv pip install` install the trained
+  project's dependencies into dpt's venv while the worktree's stayed empty. Project
+  commands now run under a scrubbed environment (`worktree.project_env`).
+- **Injection cost scales with the test suite, not the repo.** 300s was enough for a
+  project with a sub-second suite and not enough for one with a 70-second suite, where
+  all three attempts timed out. `LLM_TIMEOUT_S` is now 900s, the baseline result is
+  cached per commit, and the injector is told what the suite costs. See
+  [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) #8.
 
-Note the code review round is already scaffolded and runs via `dpt review`. It is
-*not* part of the hour — it shares the debug flow's engine, so it only becomes
-trustworthy once the debug round's generation gate is proven. Don't polish it first.
+The code review round shares this engine and inherits all four fixes, but has not been
+run against a real project. Don't polish it before validating it.
 
 ## Phase 2 — make the worktree rounds good
 
 Debug:
 
-- Critic pass on proposals (too easy / too hard / unfair-nondeterministic)
+- Critic pass on proposals (too easy / too hard / unfair-nondeterministic). The
+  `CRITIC` prompt exists in `prompts.py` and is still called from nowhere.
 - Hint ladder with grade cost
 - Diff-snapshot timeline + hypothesis notes keybind, replayed in a review screen
-- Fix-quality judge (cause vs. symptom)
-- Pre-generate the next session's bug in the background so briefing is instant
-  (injection is a 30–90s call; you should never watch that spinner)
+- ~~Fix-quality judge (cause vs. symptom)~~ — already wired into `debug_flow.finish`
+- Pre-generate the next session's bug in the background so briefing is instant.
+  Now the highest-value item here: injection measured at ~1 minute on a small project
+  and several minutes on a large one, and it is dead time either way.
 
 Review (shares all the above plumbing):
 

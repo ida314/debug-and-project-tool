@@ -14,10 +14,12 @@
 
 ```
 src/dpt/
-  cli.py         entrypoint: `dpt`, `dpt scan`, `dpt debug`, `dpt qa`
+  cli.py         entrypoint: `dpt`, `dpt scan`, `dpt debug`, `dpt review`,
+                 `dpt status`, `dpt clean`
   config.py      XDG paths, constants
   store.py       JSON persistence: projects, cards, sessions
   projects.py    scan a directory tree -> project index
+  onboard.py     derive a project's setup/test commands, then prove them
   llm.py         `claude -p` wrapper (text + JSON-schema'd calls)
   worktree.py    create / teardown throwaway worktrees
   srs.py         SM-2 scheduling
@@ -255,7 +257,8 @@ always push once more.
 
 ```
 ~/.local/share/dpt/
-  projects.json          index: path, lang, LOC, has_tests, run_cmd, test_cmd, summary
+  projects.json          index: path, lang, LOC, has_tests, setup_cmd, run_cmd,
+                         test_cmd, test_seconds, baseline_ok_at, summary
   cards.json             SRS cards (both decks) with SM-2 state
   sessions/<id>/
     spec.json            debug: full bug spec incl. hidden fields
@@ -269,6 +272,26 @@ always push once more.
     postmortem.wav
 ```
 
-`run_cmd` / `test_cmd` cannot be reliably inferred, so `dpt scan` asks once per project
-and caches. A project without a usable run command is marked ineligible for the debug
-flow rather than guessed at.
+`run_cmd` / `test_cmd` cannot be reliably *inferred*, but they don't have to be: the
+clean-tree baseline check is already an oracle for them. `onboard.py` derives candidates
+from the repo (CI workflows, lockfiles, task runners, docs; `claude -p` read-only when
+those come up empty), shows them for approval, and keeps the first pair that goes green
+in a throwaway worktree. A verified derivation is worth strictly more than a typed
+command, which nothing checks until the first session dies at the generation gate.
+
+Two things hold that together. Everything offered must be headed by a known build tool,
+so the confirmation screen is a review of plausible build commands rather than of
+arbitrary shell a regex pulled out of a README; and nothing derived executes before the
+user has seen it. Ranking is by how much a command looks like a real suite, because the
+expensive failure is adopting a *green* non-suite — a CI lint step passes, so
+verification can't catch it, and every session afterwards is graded against a linter.
+
+A project with no command that goes green is marked ineligible for the debug flow rather
+than guessed at.
+
+`setup_cmd` is the third question, and the one the original design missed: a worktree is
+a checkout of *tracked files only*, so a project's own test command generally cannot run
+there until its dependencies are installed. `test_seconds` and `baseline_ok_at` are
+measured rather than asked — the first because injection cost turns out to scale with
+suite runtime, the second so a slow suite is verified green once per commit instead of
+once per session.
